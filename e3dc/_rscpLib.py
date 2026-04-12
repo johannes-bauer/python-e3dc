@@ -207,27 +207,43 @@ def rscpFrame(data: bytes) -> bytes:
 
 def rscpFrameDecode(frameData: bytes, returnFrameLen: bool = False):
     """Decodes RSCP Frame."""
-    headerFmt = "<HHIIIH"
     crcFmt = "I"
     crc = None
 
-    magic, ctrl, sec1, _, ns, length = struct.unpack(
-        headerFmt, frameData[: struct.calcsize(headerFmt)]
-    )
+    # Peek at ctrl to determine frame format
+    _, ctrl_raw = struct.unpack("<HH", frameData[:4])
+    ctrl_peek = endianSwapUint16(ctrl_raw)
 
-    magic = endianSwapUint16(magic)
-    ctrl = endianSwapUint16(ctrl)
+    if ctrl_peek & 0x02:
+        # Compact format (protocol v2): no timestamp, 32-bit length
+        # Header: magic(2) + ctrl(2) + length(4) = 8 bytes
+        headerFmt = "<HHI"
+        magic, ctrl, length = struct.unpack(headerFmt, frameData[: struct.calcsize(headerFmt)])
+        magic = endianSwapUint16(magic)
+        ctrl = endianSwapUint16(ctrl)
+        timestamp = 0.0
+    else:
+        # Standard format: magic(2) + ctrl(2) + sec1(4) + sec2(4) + ns(4) + length(2) = 18 bytes
+        headerFmt = "<HHIIIH"
+        magic, ctrl, sec1, _, ns, length = struct.unpack(
+            headerFmt, frameData[: struct.calcsize(headerFmt)]
+        )
+        magic = endianSwapUint16(magic)
+        ctrl = endianSwapUint16(ctrl)
+        timestamp = sec1 + float(ns) / 1000
+
+    headerSize = struct.calcsize(headerFmt)
 
     if ctrl & 0x10:  # crc enabled
-        totalLen = struct.calcsize(headerFmt) + length + struct.calcsize(crcFmt)
+        totalLen = headerSize + length + struct.calcsize(crcFmt)
         data, crc = struct.unpack(
             "<" + str(length) + "s" + crcFmt,
-            frameData[struct.calcsize(headerFmt) : totalLen],
+            frameData[headerSize : totalLen],
         )
     else:
-        totalLen = struct.calcsize(headerFmt) + length
+        totalLen = headerSize + length
         data = struct.unpack(
-            "<" + str(length) + "s", frameData[struct.calcsize(headerFmt) : totalLen]
+            "<" + str(length) + "s", frameData[headerSize : totalLen]
         )[0]
 
     # check crc
@@ -238,7 +254,6 @@ def rscpFrameDecode(frameData: bytes, returnFrameLen: bool = False):
         if crcCalc != crc:
             raise FrameError("CRC32 not validated")
 
-    timestamp = sec1 + float(ns) / 1000
     if returnFrameLen:
         return data, timestamp, totalLen
     else:
@@ -308,4 +323,4 @@ def rscpDecode(
     if DEBUG_DICT["print_rscp"]:
         print("<", strTag, strType, val)
 
-    return (strTag, strType, val), headerSize + struct.calcsize(fmt)
+    return (strTag, strType, val), headerSize + length

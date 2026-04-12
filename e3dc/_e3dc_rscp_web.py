@@ -121,7 +121,7 @@ class E3DC_RSCP_web:
             REMOTE_ADDRESS,
             on_message=lambda _, msg: self.on_message(msg),
             on_close=lambda _ws, _, __: self.reset(),
-            on_error=lambda _ws, _: self.reset(),
+            on_error=lambda _ws, _: self.reset()
         )
         self.reset()
 
@@ -260,7 +260,11 @@ class E3DC_RSCP_web:
             raise
 
         # print "Decoded received message", decodedMsg
-        if tag == RscpTag.SERVER_REQ_PING:
+        if tag == RscpTag.RSCP_REQ_SET_PROTOCOL_VERSION:
+            reply = rscpFrame(rscpEncode(RscpTag.RSCP_SET_PROTOCOL_VERSION, decodedMsg[1], decodedMsg[2]))
+            self.ws.send(reply, ABNF.OPCODE_BINARY)
+            return
+        elif tag == RscpTag.SERVER_REQ_PING:
             pingFrame = rscpFrame(
                 rscpEncode(RscpTag.SERVER_PING, RscpType.NoneType, None)
             )
