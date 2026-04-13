@@ -4,6 +4,7 @@
 # Copyright 2017 Francesco Santini <francesco.santini@gmail.com>
 # Licensed under a MIT license. See LICENSE for details
 
+import logging
 import math
 import struct
 import time
@@ -24,6 +25,8 @@ from ._rscpTags import (
 # Type alias for RSCP messages
 RscpMessage: TypeAlias = tuple[str | int | RscpTag, str | int | RscpType, Any]
 
+logger = logging.getLogger(__name__)
+
 DEBUG_DICT = {"print_rscp": False}
 
 
@@ -37,6 +40,7 @@ def set_debug(debug: bool):
         Nothing
     """
     DEBUG_DICT["print_rscp"] = debug
+    logger.setLevel(logging.DEBUG if debug else logging.WARNING)
 
 
 packFmtDict_FixedSize = {
@@ -144,8 +148,8 @@ def rscpEncode(
     rscptypeHex = getHexRscpType(rscptype)
     rscptype = getRscpType(rscptype)
 
-    if DEBUG_DICT["print_rscp"]:
-        print(">", tag, rscptype, data)
+    loggable_data = '<redacted>' if tag in (RscpTag.SERVER_PASSWD, RscpTag.SERVER_USER ) else data
+    logger.debug("> %s %s %s", tag, rscptype, loggable_data)
 
     if isinstance(data, str):
         data = data.encode("utf-8")
@@ -320,7 +324,6 @@ def rscpDecode(
         # ignore none utf-8 bytes
         val = val.decode("utf-8", "ignore")
 
-    if DEBUG_DICT["print_rscp"]:
-        print("<", strTag, strType, val)
+    logger.debug("< %s %s %s", strTag, strType, val)
 
     return (strTag, strType, val), headerSize + length
